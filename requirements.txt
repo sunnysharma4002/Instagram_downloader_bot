@@ -1,0 +1,2 @@
+aiogram==3.22.0
+hikerapi>=1.7.9
