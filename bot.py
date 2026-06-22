@@ -331,21 +331,24 @@ async def handle_message(message: Message, bot: Bot) -> None:
 # Webhook support (Vercel)
 # ---------------------------------------------------------------------------
 
+# Create the dispatcher once at module level with the router attached.
+# A router cannot be attached to more than one dispatcher, and recreating
+# the dispatcher on every request would require re-registering all handlers.
+_dp = Dispatcher()
+_dp.include_router(router)
+
 
 async def handle_update(update: dict) -> None:
     """
     Process a single Telegram update (webhook mode).
 
-    Each call creates a fresh Bot and Dispatcher because Vercel's
-    BaseHTTPRequestHandler runs each request in a potentially different
-    thread with its own event loop.  Caching across requests would bind
-    aiohttp sessions to a closed event loop.
+    Creates a fresh Bot per request (aiogram bot sessions are bound to the
+    event loop, and Vercel's BaseHTTPRequestHandler runs each request in a
+    potentially different thread with its own event loop).
     """
     bot = Bot(token=BOT_TOKEN)
-    dp = Dispatcher()
-    dp.include_router(router)
     try:
-        await dp.feed_webhook_update(bot, update)
+        await _dp.feed_webhook_update(bot, update)
     finally:
         await bot.session.close()
 
