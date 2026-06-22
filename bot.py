@@ -331,43 +331,23 @@ async def handle_message(message: Message, bot: Bot) -> None:
 # Webhook support (Vercel)
 # ---------------------------------------------------------------------------
 
-_bot: Bot | None = None
-_dp: Dispatcher | None = None
-
-
-def _get_bot_and_dispatcher() -> tuple[Bot, Dispatcher]:
-    global _bot, _dp
-    if _bot is None or _dp is None:
-        _bot = Bot(token=BOT_TOKEN)
-        _dp = Dispatcher()
-        _dp.include_router(router)
-    return _bot, _dp
-
 
 async def handle_update(update: dict) -> None:
     """
     Process a single Telegram update (webhook mode).
 
-    This is intended to be called from a Vercel serverless function.
+    Each call creates a fresh Bot and Dispatcher because Vercel's
+    BaseHTTPRequestHandler runs each request in a potentially different
+    thread with its own event loop.  Caching across requests would bind
+    aiohttp sessions to a closed event loop.
     """
-    bot, dp = _get_bot_and_dispatcher()
-    await dp.feed_webhook_update(bot, update)
-
-
-async def _shutdown() -> None:
-    """
-    Best-effort shutdown for serverless environments.
-    """
-    global _bot
+    bot = Bot(token=BOT_TOKEN)
+    dp = Dispatcher()
+    dp.include_router(router)
     try:
-        await hk.aclose()
-    except Exception:
-        pass
-    if _bot is not None:
-        try:
-            await _bot.session.close()
-        except Exception:
-            pass
+        await dp.feed_webhook_update(bot, update)
+    finally:
+        await bot.session.close()
 
 
 if __name__ == "__main__":
