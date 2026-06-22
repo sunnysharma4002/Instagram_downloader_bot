@@ -1,8 +1,6 @@
 import json
 from typing import Any
 
-from bot import handle_update
-
 
 # Vercel expects an ASGI/WSGI compatible export depending on runtime.
 # In Python serverless, the common pattern is to expose `handler(request)`
@@ -40,10 +38,12 @@ def handler(request: Any):
             "headers": {"Content-Type": "text/plain"},
         }
 
-    # aiogram is async; call via event loop.
-    # Many serverless runtimes allow `asyncio.run`, but if the runtime already has
-    # an event loop, this may need adjustment.
+    # Lazy import to avoid Vercel build-time scanner failures.
+    # The bot module imports aiogram, hikerapi, and config which require
+    # environment variables -- those are only available at runtime, not during
+    # Vercel's deployment scan phase.
     import asyncio
+    from bot import handle_update
 
     try:
         asyncio.run(handle_update(update))
