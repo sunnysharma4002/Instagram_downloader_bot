@@ -1,59 +1,49 @@
 import json
-from typing import Any
+from http.server import BaseHTTPRequestHandler
 
 
-# Vercel expects an ASGI/WSGI compatible export depending on runtime.
-# In Python serverless, the common pattern is to expose `handler(request)`
-# or `app = ...`. We’ll provide a `handler` that works with many Vercel Python setups.
-#
-# If your Vercel Python runtime expects a different entry, adjust the export name.
-def handler(request: Any):
+class handler(BaseHTTPRequestHandler):
     """
-    Telegram webhook endpoint.
+    Telegram webhook endpoint for Vercel Python serverless functions.
 
-    - Accepts POST with JSON body (Telegram Update)
-    - Forwards update dict into aiogram webhook processing
+    Vercel's Python runtime requires handler to be a class that inherits
+    from http.server.BaseHTTPRequestHandler.
     """
-    if getattr(request, "method", None) != "POST":
-        return {
-            "statusCode": 405,
-            "body": "Method Not Allowed",
-            "headers": {"Content-Type": "text/plain"},
-        }
 
-    try:
-        # Vercel Python request body access varies by runtime.
-        # Prefer request.json() if available; fallback to raw body.
-        if hasattr(request, "json"):
-            update = request.json()
-        else:
-            raw = request.body  # bytes in many runtimes
-            if isinstance(raw, (bytes, bytearray)):
-                raw = raw.decode("utf-8")
-            update = json.loads(raw)
-    except Exception:
-        return {
-            "statusCode": 400,
-            "body": "Bad Request: invalid JSON",
-            "headers": {"Content-Type": "text/plain"},
-        }
+    def do_POST(self):
+        # Read the request body
+        content_length = int(self.headers.get("Content-Length", 0))
+        body = self.rfile.read(content_length)
 
-    # Lazy import to avoid Vercel build-time scanner failures.
-    # The bot module imports aiogram, hikerapi, and config which require
-    # environment variables -- those are only available at runtime, not during
-    # Vercel's deployment scan phase.
-    import asyncio
-    from bot import handle_update
+        try:
+            update = json.loads(body)
+        except Exception:
+            self.send_response(400)
+            self.send_header("Content-Type", "text/plain")
+            self.end_headers()
+            self.wfile.write(b"Bad Request: invalid JSON")
+            return
 
-    try:
-        asyncio.run(handle_update(update))
-    except RuntimeError:
-        # If there's already an event loop (rare depending on runtime), fall back.
-        loop = asyncio.get_event_loop()
-        loop.run_until_complete(handle_update(update))
+        # Lazy import to avoid Vercel build-time scanner failures.
+        # The bot module imports aiogram, hikerapi, and config which require
+        # environment variables -- those are only available at runtime.
+        import asyncio
+        from bot import handle_update
 
-    return {
-        "statusCode": 200,
-        "body": "OK",
-        "headers": {"Content-Type": "text/plain"},
-    }
+        try:
+            asyncio.run(handle_update(update))
+        except RuntimeError:
+            loop = asyncio.get_event_loop()
+            loop.run_until_complete(handle_update(update))
+
+        self.send_response(200)
+        self.send_header("Content-Type", "text/plain")
+        self.end_headers()
+        self.wfile.write(b"OK")
+
+    def do_GET(self):
+        # Return 405 for any method other than POST
+        self.send_response(405)
+        self.send_header("Content-Type", "text/plain")
+        self.end_headers()
+        self.wfile.write(b"Method Not Allowed")
