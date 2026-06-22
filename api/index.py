@@ -35,24 +35,22 @@ class handler(BaseHTTPRequestHandler):
             self.wfile.write(f"Import error: {e}".encode())
             return
 
+        loop = None
         try:
-            asyncio.run(handle_update(update))
-        except RuntimeError:
-            try:
-                loop = asyncio.get_event_loop()
-                loop.run_until_complete(handle_update(update))
-            except Exception as e:
-                self.send_response(500)
-                self.send_header("Content-Type", "text/plain")
-                self.end_headers()
-                self.wfile.write(f"Event loop error: {e}".encode())
-                return
+            # BaseHTTPRequestHandler runs in a thread pool, so we must create
+            # a fresh event loop for each invocation.
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            loop.run_until_complete(handle_update(update))
         except Exception as e:
             self.send_response(500)
             self.send_header("Content-Type", "text/plain")
             self.end_headers()
             self.wfile.write(f"Handler error: {e}".encode())
             return
+        finally:
+            if loop is not None:
+                loop.close()
 
         self.send_response(200)
         self.send_header("Content-Type", "text/plain")
