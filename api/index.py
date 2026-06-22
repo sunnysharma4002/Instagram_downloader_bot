@@ -25,16 +25,34 @@ class handler(BaseHTTPRequestHandler):
             return
 
         # Lazy import to avoid Vercel build-time scanner failures.
-        # The bot module imports aiogram, hikerapi, and config which require
-        # environment variables -- those are only available at runtime.
-        import asyncio
-        from bot import handle_update
+        try:
+            import asyncio
+            from bot import handle_update
+        except Exception as e:
+            self.send_response(500)
+            self.send_header("Content-Type", "text/plain")
+            self.end_headers()
+            self.wfile.write(f"Import error: {e}".encode())
+            return
 
         try:
             asyncio.run(handle_update(update))
         except RuntimeError:
-            loop = asyncio.get_event_loop()
-            loop.run_until_complete(handle_update(update))
+            try:
+                loop = asyncio.get_event_loop()
+                loop.run_until_complete(handle_update(update))
+            except Exception as e:
+                self.send_response(500)
+                self.send_header("Content-Type", "text/plain")
+                self.end_headers()
+                self.wfile.write(f"Event loop error: {e}".encode())
+                return
+        except Exception as e:
+            self.send_response(500)
+            self.send_header("Content-Type", "text/plain")
+            self.end_headers()
+            self.wfile.write(f"Handler error: {e}".encode())
+            return
 
         self.send_response(200)
         self.send_header("Content-Type", "text/plain")
